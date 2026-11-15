@@ -3,7 +3,6 @@ import {api,queuePut,queueAll,queueDelete,base64} from './store.js';
 const app=document.querySelector('#app');
 let user=null,events=[],stage=0,mode='listen',item=0,page='login';
 let view=0,speech=0,recording=null,pendingBlob=null,recordingUrl='',syncing=null,lastError='',sessionSaved=false;
-let celebrationTimer,ac;
 try{user=JSON.parse(localStorage.getItem('speaking-session'));}catch{}
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const progress=()=>stageProgress(events,stage);
@@ -13,10 +12,9 @@ function persist(){try{localStorage.setItem(savedKey(),JSON.stringify(events));l
 function merge(list){for(const event of list)if(!events.some(e=>e.stage===event.stage&&e.kind===event.kind&&e.item===event.item))events.push(event);persist();}
 function status(text){const el=document.querySelector('#status');if(el)el.textContent=text;}
 function clean(){
- view++;speech++;window.speechSynthesis?.cancel();clearTimeout(celebrationTimer);
+ view++;speech++;window.speechSynthesis?.cancel();
  if(recording){const current=recording;recording=null;clearTimeout(current.timer);if(current.rec.state==='recording')current.rec.stop();current.stream.getTracks().forEach(t=>t.stop());}
  if(recordingUrl)URL.revokeObjectURL(recordingUrl);recordingUrl='';pendingBlob=null;
- if(ac){ac.close().catch(()=>{});ac=null;}
 }
 function show(name){clean();page=name;render();window.scrollTo(0,0);}
 function sprite(index){
@@ -43,7 +41,11 @@ function render(){
   const recorded=sentence?p.sentences:p.words;
   app.innerHTML=intro+'<section class="card"><div class="row"><button data-action="map">Map</button><span class="badge">★ '+p.score+' / 30</span></div><h2>'+stages[stage].title+'</h2><div class="eyebrow">'+(sentence?'SPEAK IN SENTENCES':isRecord?'RECORD THE WORDS':'LISTEN TO THE WORDS')+'</div><progress max="'+list.length+'" value="'+(isRecord?recorded:p.heard)+'" aria-label="Section progress"></progress><p class="small">'+(item+1)+' / '+list.length+' · '+(isRecord?recorded:p.heard)+' completed</p>'+sprite(picture)+'<p class="word">'+escape(row[0])+'</p><details><summary>คำอ่านและคำแปล</summary><p class="thai">'+escape(row[1])+'</p><p class="thai">'+escape(row[2])+'</p><p class="small">คำอ่านไทยช่วยเริ่มฝึก เสียงภาษาอังกฤษเป็นต้นแบบในการออกเสียง</p></details><div class="controls"><button class="primary" data-action="listen">Listen'+(isRecord?' again':'')+'</button>'+(isRecord?'<button id="record" data-action="record" '+(sentence&&!events.some(e=>e.stage===stage&&e.kind==='listen_sentence'&&e.item===item)?'disabled':'')+'>Record my voice</button><audio id="playback" controls hidden aria-label="My voice"></audio><button id="use" data-action="use" disabled>Use this recording</button>':'')+'</div><p id="status" class="status" role="status">'+(has?'Completed. You can practise again.':'Listen, take your time and try.')+'</p><div class="split"><button data-action="previous" '+(item===0?'disabled':'')+'>Previous</button><button id="next" data-action="next" '+(!has?'disabled':'')+'>'+(item===list.length-1?'Finish this part':'Next')+'</button></div></section>';
  }else if(page==='celebrate'){
-  app.innerHTML=intro+'<section class="card celebrate"><div class="confetti">✦ ✧ ✦</div><h1>Well done, '+escape(user.student.nickname)+'!</h1><img class="dancer" src="assets/mascot.webp" alt="Fox celebrates"><p>'+escape(lastError)+'</p><p>Keep practising. Keep growing!</p><div class="stack"><button data-action="beat">Play celebration beat</button><button class="primary" data-action="continue">Continue adventure</button></div><p class="small">เพลงฉลองต้นฉบับ · กดหยุดเสียงหรือข้ามได้</p></section>';
+  app.innerHTML=intro+'<section class="card celebrate"><div class="confetti" aria-hidden="true">✦ ✧ ✦</div><h1>Well done, '+escape(user.student.nickname)+'!</h1><div class="mascot-track" role="img" aria-label="Your fox mascot is running and jumping to celebrate"><div class="mascot-lane"><div class="mascot-runner"><div class="mascot-facing"><img class="dancer" src="assets/mascot.webp" alt=""></div></div></div></div><p>'+escape(lastError)+'</p><p>Keep practising. Keep growing!</p><div class="stack"><button data-action="pause-celebration" aria-pressed="false">Pause animation</button><button class="primary" data-action="continue">Continue adventure</button></div></section>';
+  document.querySelector('.mascot-runner').addEventListener('animationend',()=>{
+   document.querySelector('.celebrate')?.classList.add('is-finished');
+   const pause=document.querySelector('[data-action="pause-celebration"]');if(pause)pause.hidden=true;
+  },{once:true});
  }
  updateSync();
 }
@@ -153,7 +155,6 @@ function next(){
  continuation=mode==='listen'?'record':mode==='record'?'sentence':'map';
  lastError=continuation==='map'?'Level '+(stage+1)+' complete! Your '+stages[stage].title+' Explorer mascot is collected.':'You finished this part!';
  show('celebrate');
- celebrationTimer=setTimeout(()=>document.querySelector('.dancer')?.style.setProperty('animation','none'),7000);
 }
 async function certificate(){
  const owner=user;
@@ -170,23 +171,6 @@ async function certificate(){
   app.innerHTML='<section class="certificate"><div class="eyebrow">ENGLISH SPEAKING ADVENTURE</div><h1>CERTIFICATE OF COMPLETION</h1><p>This certificate is proudly presented to</p><div class="name">'+escape(result.name)+'</div><p>for completing all five levels of vocabulary<br>and simple-sentence speaking practice.</p><p class="certtopics">'+stages.map(s=>s.title).join(' · ')+'</p><p><em>Keep practising. Keep speaking. Keep growing!</em></p><p>Completed on '+new Date(result.date).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'</p><img class="signature" src="assets/signature.webp" alt="Wongduen Khunakon signature"><strong>Wongduen Khunakon</strong><br>English teacher</section><div class="no-print stack" style="margin-top:15px"><button class="gold" data-action="print">Save as PDF / Print</button><button data-action="map">Back to map</button></div>';
   window.scrollTo(0,0);
  }catch(e){status(e.message);}
-}
-function beat(){
- if(ac){ac.close();ac=null;return;}
- const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;
- ac=new Audio();const audio=ac;
- // Original short celebration melody and synthetic claps.
- for(let j=0;j<8;j++){
-  const t=audio.currentTime+j*.44,buffer=audio.createBuffer(1,Math.floor(audio.sampleRate*.12),audio.sampleRate);
-  const data=buffer.getChannelData(0);for(let k=0;k<data.length;k++)data[k]=(Math.random()*2-1)*Math.exp(-k/(audio.sampleRate*.018));
-  const source=audio.createBufferSource(),gain=audio.createGain();source.buffer=buffer;gain.gain.value=.3;source.connect(gain);gain.connect(audio.destination);source.start(t);
- }
- for(let i=0;i<16;i++){
-  const osc=audio.createOscillator(),gain=audio.createGain(),t=audio.currentTime+i*.22;
-  osc.type='triangle';osc.frequency.value=[523,659,784,659,587,698,880,784][i%8];
-  gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(.12,t+.02);gain.gain.exponentialRampToValueAtTime(.001,t+.18);
-  osc.connect(gain);gain.connect(audio.destination);osc.start(t);osc.stop(t+.2);
- }
 }
 app.addEventListener('submit',async e=>{
  if(e.target.id!=='login')return;e.preventDefault();
@@ -216,7 +200,12 @@ app.addEventListener('click',async e=>{
   case 'previous':item--;show('practice');break;
   case 'next':next();break;
   case 'continue':if(continuation==='map'){show('map');if(!user.preview&&stages.every((_,i)=>stageProgress(events,i).done))await certificate();}else{mode=continuation;item=0;show('practice');}break;
-  case 'beat':beat();break;
+  case 'pause-celebration':{
+   const scene=document.querySelector('.celebrate');
+   const paused=scene.classList.toggle('is-paused');
+   button.textContent=paused?'Resume animation':'Pause animation';button.setAttribute('aria-pressed',String(paused));
+   break;
+  }
   case 'certificate':await certificate();break;
   case 'print':window.print();break;
  }
