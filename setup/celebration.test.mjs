@@ -2,19 +2,22 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-test('part completion renders the automatic mascot and removes the Play requirement',()=>{
+test('completion starts the multi-frame mascot and loops until the learner continues',()=>{
  const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
- const render=source.slice(source.indexOf('function render(){'),source.indexOf('async function updateSync'));
- const app={innerHTML:''};let onEnd,finished=false,hidden=false;
- const context={app,page:'celebrate',user:{preview:true,student:{nickname:'Explorer'}},escape:s=>s,lastError:'Part complete',updateSync:()=>{},
-  document:{querySelector:selector=>selector==='.mascot-runner'?{addEventListener:(event,callback)=>{assert.equal(event,'animationend');onEnd=callback;}}:selector==='.celebrate'?{classList:{add:name=>finished=name==='is-finished'}}:{set hidden(value){hidden=value;}}}
- };
- vm.runInNewContext(render+';render();',context);
- assert.match(app.innerHTML,/mascot-runner/);assert.match(app.innerHTML,/Pause animation/);
+ const render=source.slice(source.indexOf('function render(){'),source.indexOf('function celebrationVoice'));
+ const app={innerHTML:''};
+ vm.runInNewContext(render+';render();',{app,page:'celebrate',user:{preview:true,student:{nickname:'Explorer'}},escape:s=>s,lastError:'Part complete',updateSync:()=>{},celebrationVoice:()=>{}});
+ assert.match(app.innerHTML,/src="assets\/mascot-jump-v3.gif"/);
+ assert.match(app.innerHTML,/Pause animation/);
  assert.doesNotMatch(app.innerHTML,/Play celebration beat|data-action="beat"/);
- assert.ok(onEnd);onEnd();assert.equal(finished,true);assert.equal(hidden,true);
+ assert.doesNotMatch(render,/animationend|is-finished|setTimeout/);
  const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
- assert.match(css,/animation:mascot-run 3s ease-in-out 2/);
- assert.match(css,/animation:mascot-jump .5s ease-in-out 12/);
+ assert.match(css,/animation:mascot-run 4s ease-in-out infinite/);
  assert.match(css,/animation-play-state:paused/);
+ assert.match(source,/mascot.src=paused\?'assets\/mascot.webp':'assets\/mascot-jump-v3.gif'/);
+ const gif=readFileSync(new URL('../public/assets/mascot-jump-v3.gif',import.meta.url));
+ assert.equal(gif.subarray(0,6).toString(),'GIF89a');
+ assert.ok(gif.includes(Buffer.from('NETSCAPE2.0')));
+ const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+ assert.match(html,/app.js\?v=mascot-voice-4/);assert.match(html,/style.css\?v=mascot-voice-4/);
 });
