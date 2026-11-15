@@ -41,13 +41,29 @@ function render(){
   const recorded=sentence?p.sentences:p.words;
   app.innerHTML=intro+'<section class="card"><div class="row"><button data-action="map">Map</button><span class="badge">★ '+p.score+' / 30</span></div><h2>'+stages[stage].title+'</h2><div class="eyebrow">'+(sentence?'SPEAK IN SENTENCES':isRecord?'RECORD THE WORDS':'LISTEN TO THE WORDS')+'</div><progress max="'+list.length+'" value="'+(isRecord?recorded:p.heard)+'" aria-label="Section progress"></progress><p class="small">'+(item+1)+' / '+list.length+' · '+(isRecord?recorded:p.heard)+' completed</p>'+sprite(picture)+'<p class="word">'+escape(row[0])+'</p><details><summary>คำอ่านและคำแปล</summary><p class="thai">'+escape(row[1])+'</p><p class="thai">'+escape(row[2])+'</p><p class="small">คำอ่านไทยช่วยเริ่มฝึก เสียงภาษาอังกฤษเป็นต้นแบบในการออกเสียง</p></details><div class="controls"><button class="primary" data-action="listen">Listen'+(isRecord?' again':'')+'</button>'+(isRecord?'<button id="record" data-action="record" '+(sentence&&!events.some(e=>e.stage===stage&&e.kind==='listen_sentence'&&e.item===item)?'disabled':'')+'>Record my voice</button><audio id="playback" controls hidden aria-label="My voice"></audio><button id="use" data-action="use" disabled>Use this recording</button>':'')+'</div><p id="status" class="status" role="status">'+(has?'Completed. You can practise again.':'Listen, take your time and try.')+'</p><div class="split"><button data-action="previous" '+(item===0?'disabled':'')+'>Previous</button><button id="next" data-action="next" '+(!has?'disabled':'')+'>'+(item===list.length-1?'Finish this part':'Next')+'</button></div></section>';
  }else if(page==='celebrate'){
-  app.innerHTML=intro+'<section class="card celebrate"><div class="confetti" aria-hidden="true">✦ ✧ ✦</div><h1>Well done, '+escape(user.student.nickname)+'!</h1><div class="mascot-track" role="img" aria-label="Your fox mascot is running and jumping to celebrate"><div class="mascot-lane"><div class="mascot-runner"><div class="mascot-facing"><img class="dancer" src="assets/mascot.webp" alt=""></div></div></div></div><p>'+escape(lastError)+'</p><p>Keep practising. Keep growing!</p><div class="stack"><button data-action="pause-celebration" aria-pressed="false">Pause animation</button><button class="primary" data-action="continue">Continue adventure</button></div></section>';
-  document.querySelector('.mascot-runner').addEventListener('animationend',()=>{
-   document.querySelector('.celebrate')?.classList.add('is-finished');
-   const pause=document.querySelector('[data-action="pause-celebration"]');if(pause)pause.hidden=true;
-  },{once:true});
+  app.innerHTML=intro+'<section class="card celebrate"><div class="confetti" aria-hidden="true">✦ ✧ ✦</div><h1>Well done, '+escape(user.student.nickname)+'!</h1><div class="mascot-track" role="img" aria-label="Your fox mascot is running and jumping to celebrate"><div class="mascot-lane"><div class="mascot-runner"><div class="mascot-facing"><img class="dancer" src="assets/mascot-jump-v3.gif" alt=""></div></div></div></div><p>'+escape(lastError)+'</p><p>Keep practising. Keep growing!</p><div class="stack"><button data-action="pause-celebration" aria-pressed="false">Pause animation</button><button data-action="stop-cheer">Stop voice</button><button class="primary" data-action="continue">Continue adventure</button></div><p class="small" id="cheer-status" role="status"></p></section>';
+  celebrationVoice();
  }
  updateSync();
+}
+function celebrationVoice(){
+ const stop=document.querySelector('[data-action="stop-cheer"]');
+ const hint=document.querySelector('#cheer-status');
+ if(!window.speechSynthesis||!window.SpeechSynthesisUtterance){
+  if(stop)stop.hidden=true;
+  if(hint)hint.textContent='Well done! You did it!';
+  return;
+ }
+ const current=view;
+ const utterance=new window.SpeechSynthesisUtterance('Well done! You did it! Keep going!');
+ utterance.lang='en-GB';utterance.rate=.9;utterance.pitch=1.18;utterance.volume=.85;
+ const voices=window.speechSynthesis.getVoices();
+ const voice=voices.find(v=>v.lang.toLowerCase()==='en-gb')||voices.find(v=>v.lang.toLowerCase().startsWith('en'));
+ if(voice)utterance.voice=voice;
+ const finish=()=>{if(current===view&&stop)stop.disabled=true;};
+ utterance.onend=finish;
+ utterance.onerror=()=>{finish();if(current===view&&hint)hint.textContent='Well done! You did it! หากไม่ได้ยินเสียง ให้ตรวจระดับเสียงและเสียงภาษาอังกฤษของเครื่อง';};
+ try{window.speechSynthesis.cancel();window.speechSynthesis.speak(utterance);}catch{utterance.onerror();}
 }
 async function updateSync(){const el=document.querySelector('#sync-state');if(!el)return;try{const pending=(await queueAll()).filter(q=>q.studentId===user.student.id).length;el.textContent=user.preview?'Preview mode':pending?'รอส่ง '+pending+' รายการ':'ส่งงานครบแล้ว';}catch{el.textContent='กรุณาเปิดสิทธิ์จัดเก็บข้อมูลในเบราว์เซอร์';}}
 async function enqueue(kind,blob){
@@ -203,9 +219,11 @@ app.addEventListener('click',async e=>{
   case 'pause-celebration':{
    const scene=document.querySelector('.celebrate');
    const paused=scene.classList.toggle('is-paused');
+   const mascot=scene.querySelector('.dancer');if(mascot)mascot.src=paused?'assets/mascot.webp':'assets/mascot-jump-v3.gif';
    button.textContent=paused?'Resume animation':'Pause animation';button.setAttribute('aria-pressed',String(paused));
    break;
   }
+  case 'stop-cheer':window.speechSynthesis?.cancel();button.disabled=true;break;
   case 'certificate':await certificate();break;
   case 'print':window.print();break;
  }
