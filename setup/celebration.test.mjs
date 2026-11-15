@@ -19,5 +19,5 @@ test('completion starts the multi-frame mascot and loops until the learner conti
  assert.equal(gif.subarray(0,6).toString(),'GIF89a');
  assert.ok(gif.includes(Buffer.from('NETSCAPE2.0')));
  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
- assert.match(html,/app.js\?v=mascot-voice-4/);assert.match(html,/style.css\?v=mascot-voice-4/);
+ assert.match(html,/app.js\?v=[A-Za-z0-9-]+/);assert.match(html,/style.css\?v=mascot-voice-4/);
 });

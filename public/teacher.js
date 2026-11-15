@@ -12,12 +12,13 @@ async function refresh(){
  const data=await api('roster',{},token);
  roster=data.students;events=data.events;render();
 }
+function suggestedPin(){return String(Math.min(roster.length+1,9999)).padStart(4,'0');}
 function render(){
  app.innerHTML='<section class="card"><div class="row"><h1>รายชื่อนักเรียน</h1><button data-action="logout">ออกจากระบบ</button></div><button data-action="refresh">รีเฟรชผลล่าสุด</button><p id="status" role="status"></p><p class="small">คะแนนแสดงการฝึกที่ส่งสำเร็จ ครูเปิดฟังเสียงเพื่อประเมินการพูดเพิ่มเติมได้</p><div class="tablewrap"><table><thead><tr><th>นักเรียน</th><th>เข้าใช้ล่าสุด</th><th>ความคืบหน้า</th><th>ฟังเสียง</th></tr></thead><tbody>'+roster.map(student=>{
   const own=events.filter(e=>e.student_id===student.id);
   const scores=stages.map((s,i)=>{const p=stageProgress(own,i);return s.title+' '+p.heard+'/10 ฟัง · '+p.words+'/10 คำ · '+p.sentences+'/5 ประโยค';});
-  return '<tr><td>'+escape(student.code)+'<br><strong>'+escape(student.full_name)+'</strong><br>'+escape(student.nickname)+'</td><td>'+(student.last_seen?new Date(student.last_seen).toLocaleString('th-TH'):'ยังไม่เข้าเรียน')+'</td><td>'+scores.map(escape).join('<br>')+'<br>'+(student.certificate_at?'ออกเกียรติบัตรแล้ว':'')+'</td><td><button data-detail="'+student.id+'">เปิดเสียง</button></td></tr>';
- }).join('')+'</tbody></table></div></section><section class="card"><h2>เพิ่มนักเรียนก่อนส่งลิงก์</h2><form id="student"><label>รหัสนักเรียน เช่น P301<input name="code" pattern="[A-Za-z0-9-]{2,20}" required></label><label>ชื่อ–นามสกุล<input name="fullName" required maxlength="100"></label><label>ชื่อเล่น<input name="nickname" required maxlength="30"></label><button class="primary">เพิ่มและสร้างรหัสเข้าเรียน</button></form><p id="credentials" class="notice" hidden></p><p class="small">เก็บรหัสเข้าเรียนที่แสดงไว้ แล้วส่งให้ผู้ปกครองของนักเรียนคนนั้น รหัสจะแสดงครั้งเดียว</p></section><section id="detail"></section>';
+  return '<tr><td>'+escape(student.code)+'<br><strong>'+escape(student.full_name)+'</strong><br>'+escape(student.nickname)+'</td><td>'+(student.last_seen?new Date(student.last_seen).toLocaleString('th-TH'):'ยังไม่เข้าเรียน')+'</td><td>'+scores.map(escape).join('<br>')+'<br>'+(student.certificate_at?'ออกเกียรติบัตรแล้ว':'')+'</td><td><button data-detail="'+student.id+'">เปิดเสียง</button><button data-reset="'+student.id+'">เปลี่ยน PIN</button></td></tr>';
+ }).join('')+'</tbody></table></div></section><section class="card"><h2>เพิ่มนักเรียนก่อนส่งลิงก์</h2><form id="student"><label>รหัสนักเรียน เช่น P301<input name="code" pattern="[A-Za-z0-9-]{2,20}" required></label><label>ชื่อ–นามสกุล<input name="fullName" required maxlength="100"></label><label>ชื่อเล่น<input name="nickname" required maxlength="30"></label><label>PIN ตัวเลข 4 หลัก (แก้ไขได้)<input name="pin" type="text" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" value="'+suggestedPin()+'" required autocomplete="off"></label><button class="primary">เพิ่มและสร้างรหัสเข้าเรียน</button></form><p id="credentials" class="notice" hidden></p><p class="small">เก็บรหัสเข้าเรียนที่แสดงไว้ แล้วส่งให้ผู้ปกครองของนักเรียนคนนั้น รหัสจะแสดงครั้งเดียว</p></section><section id="pin-editor"></section><section id="detail"></section>';
 }
 async function detail(id){
  selected=id;message('กำลังโหลดเสียง…');
@@ -42,7 +43,11 @@ app.addEventListener('submit',async e=>{
  try{
   const data=Object.fromEntries(new FormData(form));
   if(form.id==='login'){token=(await api('teacherLogin',data)).token;await refresh();}
-  else{
+  else if(form.id==='pin-reset'){
+   const result=await api('resetPin',data,token);await refresh();
+   const box=document.querySelector('#credentials');box.hidden=false;box.textContent='เปลี่ยน PIN แล้ว · รหัสนักเรียน '+result.code+' · PIN '+result.pin+' — กรุณาจดไว้ตอนนี้';
+   box.scrollIntoView({behavior:'smooth'});
+  }else{
    const result=await api('addStudent',data,token);await refresh();
    const box=document.querySelector('#credentials');box.hidden=false;box.textContent='รหัสนักเรียน '+result.code+' · รหัสเข้าเรียน '+result.pin+' — กรุณาจดไว้ตอนนี้';
    box.scrollIntoView({behavior:'smooth'});
@@ -50,8 +55,14 @@ app.addEventListener('submit',async e=>{
  }catch(error){message(error.message);button.disabled=false;}
 });
 app.addEventListener('click',async e=>{
- const button=e.target.closest('button');if(!button||button.type==='submit'&&!button.dataset.action&&!button.dataset.detail&&!button.dataset.audio)return;
+ const button=e.target.closest('button');if(!button||button.type==='submit'&&!button.dataset.action&&!button.dataset.detail&&!button.dataset.audio&&!button.dataset.reset)return;
  try{
+  if(button.dataset.reset){
+   const student=roster.find(s=>s.id===button.dataset.reset);
+   const editor=document.querySelector('#pin-editor');
+   editor.innerHTML='<section class="card"><h2>เปลี่ยน PIN: '+escape(student.code)+' · '+escape(student.nickname)+'</h2><p>ผลการเรียนและเสียงบันทึกยังอยู่ครบ หลังบันทึกให้ใช้ PIN ใหม่เข้าสู่ระบบ</p><form id="pin-reset"><input type="hidden" name="studentId" value="'+escape(student.id)+'"><label>PIN ใหม่ ตัวเลข 4 หลัก<input name="pin" type="text" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required autocomplete="off" placeholder="เช่น 0001"></label><button class="primary">บันทึก PIN ใหม่</button></form></section>';
+   editor.scrollIntoView({behavior:'smooth'});return;
+  }
   if(button.dataset.detail){await detail(button.dataset.detail);return;}
   if(button.dataset.audio){
    const {url}=await api('audio',{recordingId:button.dataset.audio},token);

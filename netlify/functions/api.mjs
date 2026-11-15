@@ -57,7 +57,7 @@ export async function handler(event){
   }
   const user=auth(event,SESSION_SECRET);
   const teacher=user.role==='teacher'&&user.teacherExpires>Date.now();
-  if(['roster','addStudent','detail','audio'].includes(action)){
+  if(['roster','addStudent','resetPin','detail','audio'].includes(action)){
    if(!teacher)fail('Teacher sign-in required.',403);
    if(action==='roster'){
     const students=await allRows(offset=>db.from('speaking_students').select('id,code,full_name,nickname,last_seen,completed_at,certificate_at').order('code').range(offset,offset+999));
@@ -68,13 +68,25 @@ export async function handler(event){
     const code=String(body.code||'').trim().toUpperCase();
     const full_name=String(body.fullName||'').trim().slice(0,100),nickname=String(body.nickname||'').trim().slice(0,30);
     if(!/^[A-Z0-9-]{2,20}$/.test(code)||!full_name||!nickname)fail('Use a code with 2–20 English letters/numbers, plus a name and nickname.');
-    const pin=randomBytes(6).toString('hex');
+    const pin=String(body.pin??'');
+    if(!/^[0-9]{4}$/.test(pin))fail('กรุณาระบุ PIN เป็นตัวเลข 4 หลัก เช่น 0001');
     const salt=randomBytes(16).toString('hex');
     const pin_hash=salt+':'+scryptSync(pin,salt,32).toString('hex');
     const result=await db.from('speaking_students').insert({code,full_name,nickname,pin_hash});
     if(result.error?.code==='23505')fail('This student code already exists.');
     checked(result);
     return json(200,{code,pin});
+   }
+   if(action==='resetPin'){
+    const pin=String(body.pin??'');
+    if(!/^[0-9]{4}$/.test(pin))fail('กรุณาระบุ PIN เป็นตัวเลข 4 หลัก เช่น 0001');
+    if(!/^[0-9a-f-]{36}$/.test(body.studentId||''))fail('Invalid student.');
+    const student=checked(await db.from('speaking_students').select('id,code').eq('id',body.studentId).maybeSingle());
+    if(!student)fail('ไม่พบนักเรียนคนนี้',404);
+    const salt=randomBytes(16).toString('hex');
+    const pin_hash=salt+':'+scryptSync(pin,salt,32).toString('hex');
+    checked(await db.from('speaking_students').update({pin_hash}).eq('id',student.id));
+    return json(200,{code:student.code,pin});
    }
    if(action==='detail'){
     const recordings=await allRows(offset=>db.from('speaking_recordings').select('id,stage,kind,item,created_at').eq('student_id',body.studentId).order('created_at').order('id').range(offset,offset+999));
